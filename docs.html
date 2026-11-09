@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Overview · Diffhold docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="Diffhold home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      Diffhold
+    </a>
+    <nav class="topnav" aria-label="Main">
+      <a class="hide-sm" href="./">Home</a>
+      <a href="docs.html" aria-current="page">Docs</a>
+      <a href="quickstart.html">Quickstart</a>
+    </nav>
+    <span class="status-pill">pre-alpha</span>
+  </div>
+</header>
+<div class="wrap docs">
+<nav class="sidenav" aria-label="Documentation">
+<div><h4>Start</h4><ul><li><a href="docs.html" aria-current="page">Overview</a></li><li><a href="quickstart.html">Quickstart</a></li></ul></div>
+<div><h4>Configure</h4><ul><li><a href="gateway.html">Connect agentgateway</a></li><li><a href="policy.html">AgentPolicy reference</a></li><li><a href="approvals.html">Approvals</a></li></ul></div>
+<div><h4>Operate</h4><ul><li><a href="cli.html">CLI and flags</a></li><li><a href="security.html">Security model</a></li></ul></div>
+</nav>
+<main class="doc">
+<h1>Overview</h1>
+<p class="lede">Diffhold is change control for AI agents on Kubernetes. It decides, for each tool call an agent makes, whether that exact change may happen now, and makes sure the credential it hands out can do nothing else.</p>
+
+<div class="note">Diffhold is <b>pre-alpha</b>. The core decision path works end to end and runs in CI on kind, but it hasn't been released, tested on managed clouds or externally reviewed. See <a href="security.html">Security model</a> for what is still open.</div>
+
+<h2>What it does for one tool call</h2>
+<ol>
+  <li><b>Map.</b> The MCP tool call is turned into Kubernetes objects. Tools that can't be mapped, such as a raw shell, are denied.</li>
+  <li><b>Check.</b> The agent's <code>AgentPolicy</code> is evaluated. A denial stops the call unless the policy is in audit mode.</li>
+  <li><b>Preview.</b> Writes run a server-side dry-run as the agent's ServiceAccount, and Diffhold computes a field-level diff. If the dry-run fails (invalid manifest, missing RBAC, another admission controller says no), the call is denied.</li>
+  <li><b>Hold.</b> If a matching rule needs approval, the call waits. The agent and the approvers see the diff. An approval covers only that diff and is used once.</li>
+  <li><b>Grant.</b> Diffhold mints a short-lived token for the agent's ServiceAccount, stores a signed grant describing the change, writes an audit record and lets the call through with the token.</li>
+</ol>
+<p>The MCP server then calls the API server with that token. Diffhold's admission webhook compares each request made with an agent token against its grant, so the token can't repeat the change, change a different field or touch a different object.</p>
+
+<h2>Components</h2>
+<div class="tbl"><table>
+  <tr><th>Component</th><th>What it does</th></tr>
+  <tr><td>ExtMcp policy server</td><td>gRPC processor that agentgateway calls for every MCP request (port 9000, mutual TLS).</td></tr>
+  <tr><td>Dry-run and diff</td><td>Server-side apply, scale and delete dry-runs as the agent, with server noise removed from the diff.</td></tr>
+  <tr><td>Approvals API</td><td>Lists pending calls with their diffs and records approvals from authenticated people (port 9001).</td></tr>
+  <tr><td>Credential broker</td><td>Per-call TokenRequest tokens bound to a grant Secret; deleting the Secret revokes the token.</td></tr>
+  <tr><td>Admission backstop</td><td>Validating webhook that only applies to ServiceAccounts in agent namespaces. It fails closed for agents and never affects people or controllers.</td></tr>
+  <tr><td>Policy controller</td><td>Watches <code>AgentPolicy</code> objects, reloads them without a restart and writes a <code>Ready</code> condition.</td></tr>
+  <tr><td>Audit log</td><td>Hash-chained JSON lines with the decision, the diff, the approvers and the token ID. <code>diffhold audit verify</code> checks the chain.</td></tr>
+  <tr><td>AuthZEN endpoint</td><td>Decision-only API for gateways other than agentgateway. It issues no token.</td></tr>
+</table></div>
+
+<h2>High availability</h2>
+<p>The chart runs two replicas behind one Service and one webhook. Grants live in the grant Secrets themselves and approvals in ConfigMaps, so any replica can serve any call. A Lease elects one leader to revoke expired grants, expire old approvals and write policy status. If the leader stops cleanly, another replica takes over in about 3 seconds; after a crash it takes up to the 15-second lease.</p>
+
+<h2>Requirements</h2>
+<ul>
+  <li>Kubernetes 1.30 or later (token credential IDs and webhook <code>matchConditions</code>).</li>
+  <li>agentgateway 1.7 or later, with JWT authentication for agents.</li>
+  <li>An MCP server that takes a per-request Kubernetes token in a header. kubernetes-mcp-server is the tested one.</li>
+</ul>
+<div class="pager"><span></span><a href="quickstart.html">Quickstart →</a></div>
+</main>
+</div>
+<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-09</span></div></footer>
+</body>
+</html>

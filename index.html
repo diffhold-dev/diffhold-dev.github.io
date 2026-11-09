@@ -1,0 +1,317 @@
+<title>Diffhold</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Change control for AI agents on Kubernetes: policy, dry-run diff, approval and a single-use credential for every change an agent makes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="site.css">
+<style>
+.hero { padding-block: 56px 64px; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 48px; align-items: center; }
+.hero h1 { font-size: clamp(36px, 5.4vw, 62px); font-weight: 800; letter-spacing: -0.025em; }
+.hero h1 em { font-style: normal; color: var(--hold); }
+.hero .lede { font-size: 19px; color: var(--muted); max-width: 52ch; margin-top: 20px; }
+.ctas { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: var(--radius); font-weight: 600; text-decoration: none; font-size: 15.5px; border: 1px solid var(--ink); }
+.btn.primary { background: var(--ink); color: var(--bg); }
+.btn.ghost { color: var(--ink); }
+.install { margin-top: 22px; font: 13px/1.5 var(--f-mono); color: var(--muted); }
+
+.held { background: var(--code-bg); color: var(--code-ink); border-radius: 10px; font: 13px/1.55 var(--f-mono); overflow: hidden; box-shadow: 0 24px 60px -30px rgba(10, 20, 40, 0.55); min-width: 0; }
+.held .bar { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #222d42; color: var(--code-muted); font-size: 12px; flex-wrap: wrap; }
+.held .bar b { color: var(--code-ink); font-weight: 600; }
+.held .call { padding: 14px 16px 6px; overflow-x: auto; white-space: pre; }
+.held .diff { margin: 8px 16px 12px; padding: 10px 12px; background: #161f31; border-radius: 6px; overflow-x: auto; white-space: pre; }
+.held .diff .m { color: #ff8a80; }
+.held .diff .p { color: #6fd39b; }
+.held ol { list-style: none; margin: 0; padding: 4px 16px 16px; display: grid; gap: 7px; }
+.held li { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 12px; align-items: baseline; animation: step 0.5s ease both; }
+.held li span:first-child { font-weight: 600; font-size: 11px; letter-spacing: 0.06em; }
+.held .ok { color: #6fd39b; }
+.held .wait { color: #f2b35c; }
+.held .no { color: #ff8a80; }
+.held li:nth-child(1) { animation-delay: 0.15s; } .held li:nth-child(2) { animation-delay: 0.45s; }
+.held li:nth-child(3) { animation-delay: 0.75s; } .held li:nth-child(4) { animation-delay: 1.15s; }
+.held li:nth-child(5) { animation-delay: 1.75s; } .held li:nth-child(6) { animation-delay: 2.2s; }
+.held li:nth-child(7) { animation-delay: 2.6s; }
+@keyframes step { from { opacity: 0.25; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+section.band { padding-block: 72px; border-top: 1px solid var(--rule); }
+.eyebrow { font: 600 12px/1 var(--f-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--hold); }
+.band h2 { font-size: clamp(28px, 3.4vw, 40px); margin-top: 10px; max-width: 26ch; }
+.band .intro { color: var(--muted); font-size: 17.5px; max-width: 62ch; margin-top: 14px; }
+
+.problems { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: 36px; }
+.problems div { display: grid; gap: 8px; align-content: start; border-top: 2px solid var(--ink); padding-top: 14px; }
+.problems h3 { font-size: 19px; }
+.problems p { color: var(--muted); font-size: 15.5px; }
+
+.flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; margin-top: 40px; counter-reset: s; }
+.flow div { padding: 18px 18px 20px; border: 1px solid var(--rule); background: var(--surface); display: grid; gap: 8px; align-content: start; margin-left: -1px; }
+.flow div:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; }
+.flow div:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.flow div::before { counter-increment: s; content: counter(s); font: 600 12px/1 var(--f-mono); color: var(--hold); }
+.flow h3 { font-size: 17px; }
+.flow p { font-size: 14.5px; color: var(--muted); }
+
+.arch { margin-top: 36px; overflow-x: auto; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); padding: 20px; }
+.arch svg { display: block; min-width: 760px; width: 100%; height: auto; }
+.arch .box { fill: var(--sunk); stroke: var(--rule); }
+.arch .us { fill: var(--hold-soft); stroke: var(--hold); }
+.arch text { fill: var(--ink); font: 600 14px var(--f-body); }
+.arch .sub { fill: var(--muted); font: 400 12px var(--f-mono); }
+.arch .line { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.arch .hl { stroke: var(--hold); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+.arch .lbl { fill: var(--muted); font: 500 11.5px var(--f-mono); }
+.arch .arrow { fill: var(--muted); }
+.arch .arrowh { fill: var(--hold); }
+
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; margin-top: 36px; align-items: start; }
+.split > * { min-width: 0; }
+.leak td:last-child { color: var(--muted); }
+.leak td:nth-child(2) { white-space: nowrap; }
+.caption { font-size: 14px; color: var(--muted); margin-top: 10px; }
+
+.layers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
+.layers div { border: 1px solid var(--rule); border-radius: var(--radius); padding: 18px; background: var(--surface); display: grid; gap: 6px; align-content: start; }
+.layers div.us { border-color: var(--hold); background: var(--hold-soft); }
+.layers b { font: 700 18px var(--f-display); }
+.layers span { color: var(--muted); font-size: 15px; }
+.layers div.us span { color: var(--ink); }
+
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 40px; margin-top: 32px; }
+.facts div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 14px; padding-block: 12px; border-bottom: 1px solid var(--rule); }
+.facts dt { font: 600 12px/1.5 var(--f-mono); color: var(--hold); padding-top: 3px; }
+.facts dd { margin: 0; font-size: 15.5px; }
+
+.status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
+.status div { border: 1px solid var(--rule); border-radius: var(--radius); padding: 18px; background: var(--surface); display: grid; gap: 10px; align-content: start; }
+.status h3 { font-size: 17px; display: flex; gap: 10px; align-items: center; }
+.status ul { margin: 0; padding-left: 18px; display: grid; gap: 5px; font-size: 14.5px; color: var(--muted); }
+
+@media (max-width: 900px) {
+  .hero { grid-template-columns: minmax(0, 1fr); padding-block: 32px 48px; gap: 32px; }
+  .problems, .layers, .status { grid-template-columns: minmax(0, 1fr); }
+  .flow { grid-template-columns: minmax(0, 1fr); }
+  .flow div, .flow div:first-child, .flow div:last-child { margin-left: 0; margin-top: -1px; border-radius: 0; }
+  .flow div:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+  .flow div:last-child { border-radius: 0 0 var(--radius) var(--radius); }
+  .split, .facts { grid-template-columns: minmax(0, 1fr); }
+  section.band { padding-block: 52px; }
+}
+</style>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="Diffhold home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      Diffhold
+    </a>
+    <nav class="topnav" aria-label="Main">
+      <a class="hide-sm" href="#how">How it works</a>
+      <a class="hide-sm" href="#security">Security</a>
+      <a href="docs.html">Docs</a>
+      <a href="quickstart.html">Quickstart</a>
+    </nav>
+    <span class="status-pill">pre-alpha</span>
+  </div>
+</header>
+
+<main>
+<div class="wrap hero">
+  <div>
+    <h1>Every change an AI agent makes to your cluster, <em>held</em> until it&rsquo;s checked.</h1>
+    <p class="lede">Diffhold previews each agent change with a server-side dry-run, checks it against policy, waits for a named person when the change is risky, and then lets the call through with a credential that can make only that change, once.</p>
+    <div class="ctas">
+      <a class="btn primary" href="quickstart.html">Install on kind</a>
+      <a class="btn ghost" href="docs.html">Read the docs</a>
+    </div>
+    <p class="install">Kubernetes 1.30+ · agentgateway 1.7+ · any MCP agent · Apache-2.0</p>
+  </div>
+
+  <div class="held" role="figure" aria-label="Example: an agent's delete call held for approval, then allowed with a single-use token">
+    <div class="bar"><span>call <b>6663a7ce3960</b></span><span>agent <b>sre-bot</b></span><span>tool <b>resources_delete</b></span></div>
+    <div class="call">{"kind": "ConfigMap", "namespace": "team-a", "name": "flags"}</div>
+    <div class="diff"><span class="m">- ConfigMap team-a/flags (deleted)</span></div>
+    <ol>
+      <li><span class="ok">MAPPED</span><span>1 object · delete</span></li>
+      <li><span class="ok">POLICY</span><span>rule <b>destructive</b> needs approval</span></li>
+      <li><span class="ok">DRY-RUN</span><span>as agents/agent-sre-bot · 11 ms</span></li>
+      <li><span class="wait">HELD</span><span>for group:team-a-oncall · expires in 15m</span></li>
+      <li><span class="ok">APPROVED</span><span>by alice · same diff as shown</span></li>
+      <li><span class="ok">TOKEN</span><span>single use · 30s · bound to this delete</span></li>
+      <li><span class="no">REPLAY</span><span>same token again → denied by backstop</span></li>
+    </ol>
+  </div>
+</div>
+
+<section class="band" id="problem">
+  <div class="wrap">
+    <span class="eyebrow">The gap</span>
+    <h2>Agents run kubectl now. Your controls still think in tool names and roles.</h2>
+    <p class="intro">In April 2026 a coding agent with a broad token deleted a production database and its backups in nine seconds. Nothing asked what the change would do before it ran.</p>
+    <div class="problems">
+      <div><h3>Tool names are too coarse</h3><p>An MCP gateway can allow or deny <code>resources_create_or_update</code>. It can&rsquo;t tell scaling to 3 from scaling to 300, or a new image from a privileged container.</p></div>
+      <div><h3>RBAC grants windows</h3><p>Kubernetes RBAC and access brokers grant a role for a period of time. Nothing approves the one change a person actually looked at.</p></div>
+      <div><h3>Tokens outlive the decision</h3><p>Whatever credential the agent holds works for everything its ServiceAccount allows, for as long as it lives, including after it leaks.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="how">
+  <div class="wrap">
+    <span class="eyebrow">How it works</span>
+    <h2>Five checks on every tool call, in this order</h2>
+    <p class="intro">Diffhold plugs into agentgateway as an ExtMcp policy processor. In testing on kind, a write&rsquo;s dry-run added about 11 ms (p50).</p>
+    <div class="flow">
+      <div><h3>Map</h3><p>The tool call becomes Kubernetes objects: kind, namespace, name, body. Tools that can&rsquo;t be mapped, like raw shell, are denied.</p></div>
+      <div><h3>Check</h3><p>The agent&rsquo;s <code>AgentPolicy</code> decides by verb, kind and namespace, plus CEL conditions on the object.</p></div>
+      <div><h3>Preview</h3><p>A server-side dry-run runs as the agent&rsquo;s ServiceAccount and returns a field-level diff.</p></div>
+      <div><h3>Hold</h3><p>Risky rules wait for named approvers. An approval covers only the diff that was shown, and only once.</p></div>
+      <div><h3>Grant</h3><p>The call goes through with a per-call token. An admission webhook rejects anything the token tries beyond that change.</p></div>
+    </div>
+
+    <div class="arch" role="img" aria-label="Architecture: agent to agentgateway to MCP server to kube-apiserver; Diffhold receives ExtMcp gRPC calls from agentgateway and admission reviews from the API server">
+      <svg viewBox="0 0 1000 250" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0 0 10 5 0 10z"/></marker>
+          <marker id="arh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrowh" d="M0 0 10 5 0 10z"/></marker>
+        </defs>
+        <rect class="box" x="10" y="30" width="150" height="64" rx="6"/>
+        <text x="85" y="58" text-anchor="middle">AI agent</text><text class="sub" x="85" y="78" text-anchor="middle">any MCP client</text>
+        <rect class="box" x="250" y="30" width="190" height="64" rx="6"/>
+        <text x="345" y="58" text-anchor="middle">agentgateway</text><text class="sub" x="345" y="78" text-anchor="middle">JWT → metadata.agent</text>
+        <rect class="box" x="530" y="30" width="180" height="64" rx="6"/>
+        <text x="620" y="58" text-anchor="middle">MCP server</text><text class="sub" x="620" y="78" text-anchor="middle">kubernetes-mcp-server</text>
+        <rect class="box" x="800" y="30" width="190" height="64" rx="6"/>
+        <text x="895" y="58" text-anchor="middle">kube-apiserver</text><text class="sub" x="895" y="78" text-anchor="middle">agent RBAC ceiling</text>
+        <rect class="us" x="250" y="160" width="740" height="70" rx="6"/>
+        <text x="620" y="190" text-anchor="middle">Diffhold</text><text class="sub" x="620" y="210" text-anchor="middle">policy · dry-run + diff · approvals · per-call tokens · admission backstop · audit chain</text>
+        <path class="line" d="M160 62H246" marker-end="url(#ar)"/><text class="lbl" x="203" y="54" text-anchor="middle">MCP</text>
+        <path class="line" d="M440 62H526" marker-end="url(#ar)"/><text class="lbl" x="483" y="54" text-anchor="middle">+ token</text>
+        <path class="line" d="M710 62H796" marker-end="url(#ar)"/><text class="lbl" x="753" y="54" text-anchor="middle">token</text>
+        <path class="hl" d="M330 96V156" marker-end="url(#arh)"/><path class="hl" d="M360 156V96" marker-end="url(#arh)"/>
+        <text class="lbl" x="372" y="132">ExtMcp gRPC · mTLS</text>
+        <path class="hl" d="M895 96V156" marker-end="url(#arh)"/>
+        <text class="lbl" x="887" y="132" text-anchor="end">admission review</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="leak">
+  <div class="wrap">
+    <span class="eyebrow">Per-call credentials</span>
+    <h2>A leaked agent token can make one change, once.</h2>
+    <div class="split">
+      <div>
+        <div class="tbl"><table class="leak">
+          <tr><th>Attempt with the token from &ldquo;scale web to 4&rdquo;</th><th>Result</th></tr>
+          <tr><td>Scale <code>team-a/web</code> to 4</td><td><span class="chip allow">ALLOW</span></td></tr>
+          <tr><td>Same change again</td><td><span class="chip deny">DENY</span></td></tr>
+          <tr><td>Scale to 5 instead</td><td><span class="chip deny">DENY</span></td></tr>
+          <tr><td>Delete the Deployment</td><td><span class="chip deny">DENY</span></td></tr>
+          <tr><td>Read a Secret</td><td><span class="chip deny">DENY</span></td></tr>
+          <tr><td>Apply a different spec to an approved object</td><td><span class="chip deny">DENY</span></td></tr>
+          <tr><td>Use a grant edited from scale to delete</td><td><span class="chip deny">DENY</span></td></tr>
+          <tr><td>A ServiceAccount token minted outside Diffhold</td><td><span class="chip deny">DENY</span></td></tr>
+        </table></div>
+        <p class="caption">From the end-to-end suite that runs on kind in CI on every push.</p>
+      </div>
+      <div style="display:grid; gap:14px; align-content:start">
+        <p>Diffhold mints a short-lived ServiceAccount token for each allowed call and records a grant for it: the verb, the objects, the approved replica count or a hash of the exact object the dry-run predicted.</p>
+        <p>A validating admission webhook, scoped to agent ServiceAccounts only, compares every request against that grant. Humans and controllers never touch it, and if Diffhold is down, agent writes fail closed.</p>
+        <p>Grants are signed with a key agents can&rsquo;t read, used once, and revoked when they expire.</p>
+        <a href="security.html">How the credential path is secured →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="policy">
+  <div class="wrap">
+    <span class="eyebrow">AgentPolicy</span>
+    <h2>One Kubernetes resource per agent</h2>
+    <p class="intro">Policies live in the cluster and report their status like any other resource. The <code>v1alpha1</code> schema is frozen: later releases only add optional fields.</p>
+    <div class="split">
+<pre aria-label="Example AgentPolicy"><span class="k">apiVersion:</span> diffhold.dev/v1alpha1
+<span class="k">kind:</span> AgentPolicy
+<span class="k">metadata:</span> {name: sre-bot, namespace: diffhold-system}
+<span class="k">spec:</span>
+  <span class="k">subjects:</span> [{agent: sre-bot}]       <span class="c"># JWT sub from the gateway</span>
+  <span class="k">credentials:</span>
+    serviceAccount: agents/agent-sre-bot
+    grantTTL: 30s
+  <span class="k">limits:</span> {maxObjectsPerCall: 3, ratePerMinute: 120}
+  <span class="k">rules:</span>
+  - name: operate-team-a
+    verbs: [apply, scale]
+    resources: [{kinds: [Deployment], namespaces: [team-a]}]
+    conditions:
+    - "object.spec.replicas &lt;= 5"
+  - name: destructive
+    verbs: [delete, exec]
+    resources: [{kinds: ["*"], namespaces: [team-a]}]
+    approval: {approvers: [group:team-a-oncall], timeout: 15m}</pre>
+      <div style="display:grid; gap:14px; align-content:start">
+        <p><b>Rules</b> match verbs, kinds and namespaces in order. CEL conditions see the proposed object, so a limit can read <code>replicas</code> or every container image.</p>
+        <p><b>Approvals</b> name users or groups as your API server knows them. Approvers sign in with their own Kubernetes or OIDC token; the agent can never approve itself.</p>
+        <p><b>Audit mode</b> records what would have been denied without blocking, so you can roll a policy out safely.</p>
+        <p><b>Policy tests</b> run in CI with <code>diffhold test</code>, which checks expected allow, deny and approval for each tool call.</p>
+        <a href="policy.html">AgentPolicy reference →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="fit">
+  <div class="wrap">
+    <span class="eyebrow">Where it fits</span>
+    <h2>Works alongside the tools you already run</h2>
+    <div class="layers">
+      <div><b>Teleport</b><span>decides who can reach the cluster</span></div>
+      <div><b>Kyverno</b><span>decides what may be deployed</span></div>
+      <div class="us"><b>Diffhold</b><span>decides what change an agent may make, right now</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="security">
+  <div class="wrap">
+    <span class="eyebrow">Security</span>
+    <h2>Threat-modelled before anyone runs it</h2>
+    <p class="intro">The threat model lists 25 threats with status and evidence. The seven that blocked any outside use are fixed, and each fix started with a test that reproduced the attack.</p>
+    <dl class="facts">
+      <div><dt>IDENTITY</dt><dd>The agent identity comes only from the gateway&rsquo;s authenticated metadata, such as the JWT subject. Headers are ignored.</dd></div>
+      <div><dt>TRANSPORT</dt><dd>The gateway connection requires mutual TLS. The Helm chart generates both certificates.</dd></div>
+      <div><dt>CONTENT</dt><dd>Apply tokens are bound to a hash of the exact object the dry-run predicted.</dd></div>
+      <div><dt>GRANTS</dt><dd>Grants are HMAC-signed with a key only Diffhold can read, and used once.</dd></div>
+      <div><dt>APPROVERS</dt><dd>Approvers authenticate as themselves; counts, groups and timeouts are enforced and recorded.</dd></div>
+      <div><dt>EVIDENCE</dt><dd>Hash-chained audit log with diffs and approvers, and signed checkpoints of its head. Secret values are always redacted.</dd></div>
+      <div><dt>SELF-CHECK</dt><dd>Diffhold checks every agent ServiceAccount for permissions that could switch it off, and can refuse to serve those agents.</dd></div>
+      <div><dt>LIMITS</dt><dd>Per-agent rate limits and a cap on open approval requests keep a runaway agent from flooding people.</dd></div>
+    </dl>
+    <p class="caption" style="margin-top:20px"><a href="security.html">Security model and open items →</a></p>
+  </div>
+</section>
+
+<section class="band" id="status">
+  <div class="wrap">
+    <span class="eyebrow">Status</span>
+    <h2>Pre-alpha. The core decision path works end to end.</h2>
+    <div class="status">
+      <div><h3><span class="chip allow">DONE</span>Foundation</h3><ul><li>ExtMcp plugin and AuthZEN endpoint</li><li>Dry-run and diff, approvals, per-call tokens, backstop</li><li>CRD, controller, HA with leader election</li><li>Helm chart, multi-arch image, e2e on kind in CI</li><li>All 7 P0 threat-model fixes, API frozen</li><li>P1 hardening: permission self-check, signed audit chain, admin TLS, approval caps</li></ul></div>
+      <div><h3><span class="chip hold">NEXT</span>OSS v0.1</h3><ul><li>Slack approvals tested on a real workspace</li><li>Helm tools for agents (v0.2)</li><li>Load tests on a cloud cluster</li><li>Cloud installs on EKS, GKE, AKS, RKE2</li><li>External review of the credential path</li></ul></div>
+      <div><h3><span class="chip deny">NOT YET</span>Public</h3><ul><li>The source and image are private until the v0.1 release</li><li>Not tested on EKS, GKE, AKS or RKE2 yet</li><li>Not yet run with a real LLM agent; tests use a scripted client</li><li>No chart repository; install from a checkout</li></ul></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span>Diffhold · Apache-2.0</span>
+    <a href="docs.html">Docs</a>
+    <a href="security.html">Security</a>
+    <a href="policy.html">AgentPolicy reference</a>
+  </div>
+</footer>

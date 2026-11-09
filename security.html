@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Security model · Diffhold docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="Diffhold home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      Diffhold
+    </a>
+    <nav class="topnav" aria-label="Main">
+      <a class="hide-sm" href="./">Home</a>
+      <a href="docs.html" aria-current="page">Docs</a>
+      <a href="quickstart.html">Quickstart</a>
+    </nav>
+    <span class="status-pill">pre-alpha</span>
+  </div>
+</header>
+<div class="wrap docs">
+<nav class="sidenav" aria-label="Documentation">
+<div><h4>Start</h4><ul><li><a href="docs.html">Overview</a></li><li><a href="quickstart.html">Quickstart</a></li></ul></div>
+<div><h4>Configure</h4><ul><li><a href="gateway.html">Connect agentgateway</a></li><li><a href="policy.html">AgentPolicy reference</a></li><li><a href="approvals.html">Approvals</a></li></ul></div>
+<div><h4>Operate</h4><ul><li><a href="cli.html">CLI and flags</a></li><li><a href="security.html" aria-current="page">Security model</a></li></ul></div>
+</nav>
+<main class="doc">
+<h1>Security model</h1>
+<p class="lede">What Diffhold guarantees, what it trusts, and what is still open. The full threat model, with 25 threats and the evidence for each, is <code>docs/threat-model.md</code> in the repository.</p>
+
+<h2>Guarantees</h2>
+<ul>
+  <li><b>No agent write without a matching grant.</b> Every request from an agent ServiceAccount is checked by the admission webhook against a grant Diffhold issued for that call.</li>
+  <li><b>A grant covers one change.</b> It names the verb and objects, and either the approved replica count or a SHA-256 hash of the exact object the dry-run predicted. It is used once and expires (30 seconds by default).</li>
+  <li><b>An approval covers one diff.</b> It is bound to the change the approver saw, used once and expires.</li>
+  <li><b>People and controllers are never blocked.</b> The webhook's <code>matchConditions</code> limit it to agent namespaces, so a Diffhold outage only stops agent writes.</li>
+  <li><b>Agent RBAC is still the ceiling.</b> Diffhold can only narrow what the agent's ServiceAccount is already allowed to do.</li>
+</ul>
+
+<h2>What it trusts</h2>
+<div class="tbl"><table>
+  <tr><th>Boundary</th><th>Control</th></tr>
+  <tr><td>Gateway → Diffhold</td><td>Mutual TLS with a pinned client name. The agent identity comes from gateway metadata, never from request headers.</td></tr>
+  <tr><td>Grants in agent namespaces</td><td>HMAC-SHA256 over the grant, the Secret's name and UID, with a key in Diffhold's namespace that agents can't read. A tampered grant is denied and revoked.</td></tr>
+  <tr><td>Used-grant markers</td><td>Created atomically in Diffhold's namespace, out of the agent's reach.</td></tr>
+  <tr><td>Policies</td><td>Read only from Diffhold's namespace by default. A policy's ServiceAccount must be in an agent namespace and used by one policy only.</td></tr>
+  <tr><td>Approvers</td><td>Their own token, checked by TokenReview with a dedicated audience. The agent and agent-namespace ServiceAccounts can't approve.</td></tr>
+  <tr><td>Evidence</td><td>Hash-chained audit log. Secret values and policy-chosen paths are redacted; approvals stay bound to the unredacted change.</td></tr>
+</table></div>
+
+<h2>Fixed before any outside use</h2>
+<p>The threat model found seven issues that blocked outside use. All are fixed, and each fix started with a test that reproduced the attack.</p>
+<div class="tbl"><table>
+  <tr><th>ID</th><th>Issue</th><th>Status</th></tr>
+  <tr><td>T1</td><td>Agent identity could be claimed with a header</td><td><span class="chip allow">FIXED</span></td></tr>
+  <tr><td>T2</td><td>The gRPC port had no authentication</td><td><span class="chip allow">FIXED</span></td></tr>
+  <tr><td>T3</td><td>An apply token could write a different spec</td><td><span class="chip allow">FIXED</span></td></tr>
+  <tr><td>T4</td><td>A write without a name matched any object</td><td><span class="chip allow">FIXED</span></td></tr>
+  <tr><td>T5</td><td>Grants could be edited, forged or replayed</td><td><span class="chip allow">FIXED</span></td></tr>
+  <tr><td>T6</td><td>Any policy could take over an agent's ServiceAccount</td><td><span class="chip allow">FIXED</span></td></tr>
+  <tr><td>T7</td><td>Approvals used a shared token and ignored approver rules</td><td><span class="chip allow">FIXED</span></td></tr>
+</table></div>
+
+<h2>Hardening before v0.1</h2>
+<div class="tbl"><table>
+  <tr><th>ID</th><th>Risk</th><th>Control</th><th>Status</th></tr>
+  <tr><td>T13</td><td>An agent ServiceAccount with RBAC over webhook configurations, <code>AgentPolicy</code>, RBAC or Diffhold's namespace could switch off its own guard</td><td>Permission self-check at startup, on policy change and every 5 minutes. <code>warn</code> reports; <code>enforce</code> also denies that agent's calls</td><td><span class="chip allow">DONE</span></td></tr>
+  <tr><td>T14</td><td>A mutating webhook or server default changes an applied object after policy checked it</td><td>Conditions run again on the dry-run's predicted object</td><td><span class="chip allow">DONE</span></td></tr>
+  <tr><td>T16</td><td>Audit records rewritten wholesale</td><td>Ed25519-signed checkpoints of the chain head, replica IDs and sequence numbers. Ship logs to append-only storage to catch truncation of the unsigned tail</td><td><span class="chip allow">DONE</span></td></tr>
+  <tr><td>T18</td><td>An agent floods Diffhold or its approvers</td><td><code>ratePerMinute</code> and a cap of 20 open approval requests per agent</td><td><span class="chip allow">DONE</span></td></tr>
+  <tr><td>T20</td><td>Admin traffic read on the network</td><td>HTTPS on the admin port with the chart's certificate</td><td><span class="chip allow">DONE</span></td></tr>
+  <tr><td>T22</td><td>Supply-chain compromise</td><td>Actions pinned by SHA, Dependabot, SBOM and provenance. Image signing at the public release</td><td><span class="chip hold">PARTIAL</span></td></tr>
+</table></div>
+<p>An external review of the credential path is required before the v0.1 release.</p>
+
+<h2>Known limitation</h2>
+<p>kubernetes-mcp-server applies changes client-side, while Diffhold predicts them with a server-side apply. When an apply removes fields, the two can differ, and the backstop then denies the write. This fails closed.</p>
+
+<h2>Reporting a vulnerability</h2>
+<p>Until the source repository is public, report security issues privately through <a href="https://github.com/diffhold-dev/diffhold-dev.github.io/security/advisories/new">GitHub private vulnerability reporting</a> on this site's repository. Do not open a public issue.</p>
+<div class="pager"><a href="cli.html">← CLI and flags</a><span></span></div>
+</main>
+</div>
+<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-09</span></div></footer>
+</body>
+</html>

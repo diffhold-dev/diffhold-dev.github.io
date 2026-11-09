@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Quickstart · Diffhold docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="Diffhold home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      Diffhold
+    </a>
+    <nav class="topnav" aria-label="Main">
+      <a class="hide-sm" href="./">Home</a>
+      <a href="docs.html">Docs</a>
+      <a href="quickstart.html" aria-current="page">Quickstart</a>
+    </nav>
+    <span class="status-pill">pre-alpha</span>
+  </div>
+</header>
+<div class="wrap docs">
+<nav class="sidenav" aria-label="Documentation">
+<div><h4>Start</h4><ul><li><a href="docs.html">Overview</a></li><li><a href="quickstart.html" aria-current="page">Quickstart</a></li></ul></div>
+<div><h4>Configure</h4><ul><li><a href="gateway.html">Connect agentgateway</a></li><li><a href="policy.html">AgentPolicy reference</a></li><li><a href="approvals.html">Approvals</a></li></ul></div>
+<div><h4>Operate</h4><ul><li><a href="cli.html">CLI and flags</a></li><li><a href="security.html">Security model</a></li></ul></div>
+</nav>
+<main class="doc">
+<h1>Quickstart</h1>
+<p class="lede">Install Diffhold on a local kind cluster, load an example policy and watch it allow, deny and hold agent calls. About 10 minutes.</p>
+
+<div class="note">The source and image are not public yet. They will be at the v0.1 release, and until then these steps need a checkout of the source. They build the image locally, so no pull secret is needed.</div>
+
+<h2>1. Create a cluster and build the image</h2>
+<pre>kind create cluster --name diffhold --image kindest/node:v1.35.0
+cd diffhold                    <span class="c"># your checkout of the source</span>
+make build                     <span class="c"># bin/diffhold, used below</span>
+docker build -t diffhold:dev .
+kind load docker-image diffhold:dev --name diffhold</pre>
+
+<h2>2. Create an agent identity</h2>
+<p>Agents act through a ServiceAccount in an <b>agent namespace</b> (<code>agents</code> by default). Its RBAC is the hard ceiling: Diffhold can only narrow it. The test fixtures create the <code>agents/agent-sre-bot</code> ServiceAccount, a role for it in <code>team-a</code>, a sample Deployment and an approver ServiceAccount <code>oncall/alice</code>.</p>
+<pre>kubectl apply -f test/e2e/fixtures.yaml</pre>
+
+<h2>3. Install the chart</h2>
+<pre>helm install diffhold charts/diffhold -n diffhold-system --create-namespace \
+  --set image.repository=diffhold --set image.tag=dev --set image.pullPolicy=Never --wait</pre>
+<p>The chart generates the webhook CA, the gRPC server and gateway client certificates, the admin token, the grant signing key and the audit signing key, and keeps all of them across upgrades.</p>
+
+<h2>4. Load a policy</h2>
+<pre>kubectl apply -f examples/agentpolicy.yaml
+kubectl -n diffhold-system get agentpolicies</pre>
+<pre><span class="c">NAME      AGENTS    MODE      READY   AGE</span>
+sre-bot   sre-bot   enforce   True    4s</pre>
+<p>Check the policy offline at any time, and run its test suite:</p>
+<pre>bin/diffhold policy check examples/agentpolicy.yaml
+bin/diffhold test examples/agentpolicy_test.yaml      <span class="c"># 10/10 passed</span></pre>
+
+<h2>5. Connect a gateway</h2>
+<p>Point agentgateway's guardrail processor at <code>diffhold.diffhold-system.svc:9000</code> with the client certificate from Secret <code>diffhold-gateway-client</code>. See <a href="gateway.html">Connect agentgateway</a>.</p>
+<p>To try the full path without a gateway, run the end-to-end suite. It calls Diffhold over mTLS the way agentgateway does, uses the returned tokens against the API server and checks every result:</p>
+<pre>DIFFHOLD_E2E_CONTEXT=kind-diffhold hack/e2e-helm.sh</pre>
+
+<h2>6. Approve a held call</h2>
+<pre>kubectl -n diffhold-system port-forward svc/diffhold 9001 &amp;
+kubectl -n diffhold-system get secret diffhold-gateway-client -o jsonpath='{.data.ca\.crt}' | base64 -d &gt; ca.crt
+kubectl -n diffhold-system get secret diffhold-admin -o jsonpath='{.data.token}' | base64 -d &gt; admin.token
+export DIFFHOLD_ADMIN=https://localhost:9001 DIFFHOLD_CA_FILE=ca.crt
+TLS="--tls-server-name diffhold.diffhold-system.svc"
+bin/diffhold approvals list $TLS --token-file admin.token
+
+kubectl create token alice -n oncall --audience diffhold &gt; alice.token
+bin/diffhold approvals approve CALL_ID $TLS --token-file alice.token</pre>
+<p>Check that no agent ServiceAccount can switch Diffhold off:</p>
+<pre>bin/diffhold permissions check agents/agent-sre-bot --context kind-diffhold      <span class="c"># OK    agents/agent-sre-bot</span></pre>
+<p>The agent retries the same call and it goes through once. See <a href="approvals.html">Approvals</a>.</p>
+
+<h2>Uninstall</h2>
+<pre>helm uninstall diffhold -n diffhold-system</pre>
+<p>A pre-delete hook revokes every outstanding per-call token before the webhook goes away. Helm leaves the CRD in place.</p>
+<div class="pager"><a href="docs.html">← Overview</a><a href="gateway.html">Connect agentgateway →</a></div>
+</main>
+</div>
+<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-09</span></div></footer>
+</body>
+</html>

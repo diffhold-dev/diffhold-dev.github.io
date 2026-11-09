@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AgentPolicy reference · Diffhold docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="Diffhold home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      Diffhold
+    </a>
+    <nav class="topnav" aria-label="Main">
+      <a class="hide-sm" href="./">Home</a>
+      <a href="docs.html" aria-current="page">Docs</a>
+      <a href="quickstart.html">Quickstart</a>
+    </nav>
+    <span class="status-pill">pre-alpha</span>
+  </div>
+</header>
+<div class="wrap docs">
+<nav class="sidenav" aria-label="Documentation">
+<div><h4>Start</h4><ul><li><a href="docs.html">Overview</a></li><li><a href="quickstart.html">Quickstart</a></li></ul></div>
+<div><h4>Configure</h4><ul><li><a href="gateway.html">Connect agentgateway</a></li><li><a href="policy.html" aria-current="page">AgentPolicy reference</a></li><li><a href="approvals.html">Approvals</a></li></ul></div>
+<div><h4>Operate</h4><ul><li><a href="cli.html">CLI and flags</a></li><li><a href="security.html">Security model</a></li></ul></div>
+</nav>
+<main class="doc">
+<h1>AgentPolicy reference</h1>
+<p class="lede"><b>diffhold.dev/v1alpha1</b>, frozen on 2026-11-04. The schema below is stable. Later <code>v1alpha1</code> releases only add optional fields (see <a href="#compatibility">Compatibility</a>).</p>
+<p>An <code>AgentPolicy</code> binds one or more agents to a ServiceAccount and a list of rules. Diffhold loads policies from its own namespace (<code>--policy-namespace</code>, default: Diffhold's namespace) or from files (<code>--policies</code>). Both sources are validated the same way.</p>
+<pre>apiVersion: diffhold.dev/v1alpha1
+kind: AgentPolicy
+metadata:
+  name: sre-bot
+  namespace: diffhold-system
+spec:
+  subjects:
+  - agent: sre-bot
+  credentials:
+    serviceAccount: agents/agent-sre-bot
+    grantTTL: 30s
+  limits:
+    maxObjectsPerCall: 3
+    ratePerMinute: 120
+  audit:
+    redact:
+    - kinds: [Deployment]
+      paths: ["spec.template.spec.containers[*].env"]
+  rules:
+  - name: destructive
+    verbs: [delete]
+    resources: [{kinds: [Deployment], namespaces: [team-a]}]
+    approval:
+      approvers: [group:team-a-oncall]
+      count: 1
+      timeout: 15m
+  defaults:
+    mode: enforce</pre>
+<h2><code>spec.subjects[]</code> (required, at least one)</h2>
+<div class="tbl"><table>
+<tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+<tr><td><code>agent</code></td><td>string, required</td><td>The agent identity sent by the gateway as processor metadata <code>agent</code>, for example the JWT <code>sub</code>. Headers are not trusted unless <code>--insecure-agent-header</code> is set. An agent may appear in only one policy.</td></tr>
+</table></div>
+<h2><code>spec.credentials</code> (required)</h2>
+<div class="tbl"><table>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>serviceAccount</code></td><td><code>&lt;namespace&gt;/&lt;name&gt;</code>, required</td><td></td><td>The ServiceAccount that per-call tokens are minted for. The namespace must be in <code>--grant-namespaces</code>, and only one policy may use a given ServiceAccount (otherwise status <code>ServiceAccountNotAllowed</code> or <code>Conflict</code>).</td></tr>
+<tr><td><code>grantTTL</code></td><td>duration</td><td><code>30s</code></td><td>How long a per-call token and its grant stay valid.</td></tr>
+<tr><td><code>singleUse</code></td><td>bool</td><td><code>true</code></td><td>The token is accepted for one admission request. Set to <code>false</code> only for tools that make several API calls per tool call.</td></tr>
+<tr><td><code>readTokenTTL</code></td><td>duration</td><td><code>10m</code></td><td>Reads (<code>get</code>, <code>list</code>, <code>watch</code>, <code>logs</code>) share one token per agent instead of a grant per call. It cannot write: it has no grant, so the backstop denies every write made with it. <code>0s</code> keeps a token per read; otherwise 10m to 1h.</td></tr>
+</table></div>
+<h2><code>spec.rules[]</code> (required, at least one)</h2>
+<p>Rules are evaluated in order. The first rule whose verbs and resources match an object, and that does not exclude it, decides. If its conditions are false, the call is denied. Every object in a call must match a rule.</p>
+<div class="tbl"><table>
+<tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+<tr><td><code>name</code></td><td>string, required, unique</td><td>Shown in audit records and denial reasons.</td></tr>
+<tr><td><code>verbs</code></td><td>list, required</td><td><code>get</code>, <code>list</code>, <code>watch</code>, <code>logs</code>, <code>apply</code>, <code>scale</code>, <code>delete</code>, <code>exec</code> or <code>*</code>.</td></tr>
+<tr><td><code>resources[]</code></td><td>list, required</td><td>Selectors with <code>kinds</code> and <code>namespaces</code>. An omitted list, or <code>*</code>, matches everything.</td></tr>
+<tr><td><code>exclude[]</code></td><td>list</td><td>Selectors that this rule does not cover. Evaluation moves on to the next rule.</td></tr>
+<tr><td><code>conditions[]</code></td><td>list of CEL</td><td>Each must return bool. Variables: <code>object</code> (the proposed object, or name, namespace and replicas for scale), <code>verb</code>, <code>kind</code>, <code>namespace</code>, <code>name</code>. Conditions run twice: before the dry-run on the submitted object, and after it with <code>object</code> set to the predicted object (for <code>apply</code>) and <code>blast</code> filled in. Both must pass. <code>blast</code> has <code>replicasBefore</code>, <code>replicasAfter</code>, <code>rollout</code>, <code>podsAffected</code> (pods terminated or replaced), <code>podsAffectedPercent</code> and <code>pdbViolations</code> (matching PodDisruptionBudgets with fewer allowed disruptions than <code>podsAffected</code>); it is all zeros before the dry-run and for kinds that run no pods. <code>oldObject</code> is the live object read during the dry-run, or <code>null</code> when it does not exist yet, for example <code>oldObject == null || object.spec.replicas &gt;= oldObject.spec.replicas / 2</code>. Conditions that use it run only after the dry-run, so they apply to writes; a call they would govern is denied when dry-run is off.</td></tr>
+<tr><td><code>approval</code></td><td>object</td><td>Human approval is required (see below).</td></tr>
+</table></div>
+<h3><code>spec.rules[].approval</code></h3>
+<div class="tbl"><table>
+<tr><th>Field</th><th>Type</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>approvers</code></td><td>list, required</td><td></td><td><code>user:&lt;name&gt;</code> or <code>group:&lt;name&gt;</code>, as the API server authenticates the approver's token (TokenReview, audience <code>diffhold</code>).</td></tr>
+<tr><td><code>count</code></td><td>int ≥ 1</td><td><code>1</code></td><td>Distinct people who must approve. The agent's own ServiceAccount and ServiceAccounts in agent namespaces never count.</td></tr>
+<tr><td><code>timeout</code></td><td>duration</td><td><code>--approval-ttl</code> (1h)</td><td>How long the request waits for approval. When several rules apply, the shortest timeout wins.</td></tr>
+</table></div>
+<p>An approval is single-use and bound to the exact change. If the dry-run result differs on retry, including values hidden by redaction, approval is requested again.</p>
+<h2><code>spec.limits</code></h2>
+<div class="tbl"><table>
+<tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+<tr><td><code>maxObjectsPerCall</code></td><td>int ≥ 1</td><td>Calls touching more objects are denied.</td></tr>
+<tr><td><code>ratePerMinute</code></td><td>int ≥ 1</td><td>Tool calls per agent per minute, as a token bucket with a burst of the same size. Excess calls get <code>RESOURCE_EXHAUSTED</code>. The limit is enforced per replica, so N replicas allow up to N times the rate.</td></tr>
+</table></div>
+<h2><code>spec.audit</code></h2>
+<div class="tbl"><table>
+<tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+<tr><td><code>redact[].kinds</code></td><td>list</td><td>Kinds the rule applies to. Empty or <code>*</code> means every kind.</td></tr>
+<tr><td><code>redact[].paths</code></td><td>list, required</td><td>Field paths whose values are replaced by <code>&lt;redacted&gt;</code> in diffs shown to the agent and approvers, in the audit log, and in AuthZEN responses. Syntax: <code>a.b</code>, <code>a[*].b</code>, <code>a["key.with.dots"]</code>. Use <code>[*]</code> for list elements. A path also covers everything below it.</td></tr>
+</table></div>
+<p>Secret <code>data</code> and <code>stringData</code> are always redacted. Changed keys stay visible, but their values do not.</p>
+<h2><code>spec.defaults</code></h2>
+<div class="tbl"><table>
+<tr><th>Field</th><th>Values</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>mode</code></td><td><code>enforce</code>, <code>audit</code></td><td><code>enforce</code></td><td><code>audit</code> records would-be denials and allows the call.</td></tr>
+<tr><td><code>dryRun</code></td><td><code>required</code>, <code>off</code></td><td><code>required</code></td><td><code>off</code> skips the server-side dry-run for <code>scale</code> and <code>delete</code>. <code>apply</code> always dry-runs, because its token is bound to the predicted object.</td></tr>
+<tr><td><code>unmappedTools</code></td><td><code>deny</code></td><td><code>deny</code></td><td>Reserved for future values. Tools without an adapter are denied.</td></tr>
+</table></div>
+<h2><code>status</code></h2>
+<div class="tbl"><table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><code>observedGeneration</code></td><td>Generation the status refers to.</td></tr>
+<tr><td><code>agents</code></td><td>Comma-separated agents bound by this policy.</td></tr>
+<tr><td><code>conditions[]</code></td><td><code>Ready</code> with reason <code>Loaded</code>, <code>Invalid</code>, <code>CompileError</code>, <code>Conflict</code> or <code>ServiceAccountNotAllowed</code>.</td></tr>
+</table></div>
+<h2 id="compatibility">Compatibility</h2>
+<p>For the rest of <code>v1alpha1</code>:</p>
+<ul><li><b>Allowed:</b> new optional fields, whose absence keeps today's behaviour. New enum values are allowed only where the default behaviour is unchanged.</li><li><b>Not allowed:</b> removing, renaming or retyping a field; making a field required; tightening validation; or changing the meaning of an existing value or default.</li><li>Breaking changes need <code>v1alpha2</code> with a conversion path.</li></ul>
+<p><b>Enforcement:</b> <code>api/v1alpha1/freeze_test.go</code> in the repository fails on any schema change (<code>testdata/fields.golden</code>). It also checks that the Go types, CRD schema and enum values match, and <code>validate_test.go</code> checks that file policies are held to the same constraints as the CRD.</p>
+<div class="pager"><a href="gateway.html">← Connect agentgateway</a><a href="approvals.html">Approvals →</a></div>
+</main>
+</div>
+<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-09</span></div></footer>
+</body>
+</html>

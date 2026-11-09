@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Approvals · Diffhold docs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="Diffhold home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      Diffhold
+    </a>
+    <nav class="topnav" aria-label="Main">
+      <a class="hide-sm" href="./">Home</a>
+      <a href="docs.html" aria-current="page">Docs</a>
+      <a href="quickstart.html">Quickstart</a>
+    </nav>
+    <span class="status-pill">pre-alpha</span>
+  </div>
+</header>
+<div class="wrap docs">
+<nav class="sidenav" aria-label="Documentation">
+<div><h4>Start</h4><ul><li><a href="docs.html">Overview</a></li><li><a href="quickstart.html">Quickstart</a></li></ul></div>
+<div><h4>Configure</h4><ul><li><a href="gateway.html">Connect agentgateway</a></li><li><a href="policy.html">AgentPolicy reference</a></li><li><a href="approvals.html" aria-current="page">Approvals</a></li></ul></div>
+<div><h4>Operate</h4><ul><li><a href="cli.html">CLI and flags</a></li><li><a href="security.html">Security model</a></li></ul></div>
+</nav>
+<main class="doc">
+<h1>Approvals</h1>
+<p class="lede">A rule with an <code>approval</code> block holds matching calls until enough of the named people approve the exact change.</p>
+
+<h2>How a held call flows</h2>
+<ol>
+  <li>The agent calls a tool. Diffhold runs the dry-run, sees that a matched rule needs approval and records a pending request with the diff.</li>
+  <li>The agent gets a denial that includes the call ID and the proposed change, and is told to retry after approval. For workloads and pods the change ends with its blast radius, for example <code>! Deployment team-a/web blast radius: 1 of 1 pods terminated or replaced (100%), replicas 1 → 0; PDB web allows 0 disruption(s)</code>.</li>
+  <li>An approver lists pending calls, reads the diff and approves with their own token.</li>
+  <li>The agent retries the same call. Diffhold runs the dry-run again. If the result matches what was approved, the approval is used up and the call goes through with a per-call token.</li>
+</ol>
+<p>The call ID is a hash of the agent, the tool and its arguments, so a retry with different arguments is a different call that needs its own approval.</p>
+
+<h2>Rules that are enforced</h2>
+<ul>
+  <li><b>Who.</b> Approvers are listed as <code>user:&lt;name&gt;</code> or <code>group:&lt;name&gt;</code>, exactly as your API server authenticates them: OIDC users and groups, or <code>group:system:serviceaccounts:&lt;namespace&gt;</code> for ServiceAccounts.</li>
+  <li><b>How many.</b> <code>count</code> distinct people must approve (default 1). When several rules apply to one call, each rule's requirement must be met.</li>
+  <li><b>Not the agent.</b> The agent's own ServiceAccount, and any ServiceAccount in an agent namespace, can never approve.</li>
+  <li><b>How many open.</b> One agent can have at most 20 open requests (<code>--max-pending-per-agent</code>); more are refused until some are approved or expire.</li>
+  <li><b>How long.</b> A request stays open for the rule's <code>timeout</code> (default 1 hour). Once approved, it must be used within 15 minutes (<code>--approved-ttl</code>).</li>
+  <li><b>Once, for this diff.</b> An approval is consumed by the first allowed retry. If the dry-run result changes before then, including values hidden by redaction, approval is requested again.</li>
+</ul>
+
+<h2>Approving from the CLI</h2>
+<pre><span class="c"># kubectl -n diffhold-system port-forward svc/diffhold 9001</span>
+<span class="c"># the admin port serves HTTPS with the chart's certificate</span>
+kubectl -n diffhold-system get secret diffhold-gateway-client -o jsonpath='{.data.ca\.crt}' | base64 -d &gt; ca.crt
+export DIFFHOLD_ADMIN=https://localhost:9001 DIFFHOLD_CA_FILE=ca.crt
+TLS="--tls-server-name diffhold.diffhold-system.svc"
+
+<span class="c"># list pending calls (admin token)</span>
+diffhold approvals list $TLS --token-file admin.token
+
+<span class="c"># approve as yourself: a Kubernetes token with audience "diffhold"</span>
+kubectl create token alice -n oncall --audience diffhold &gt; me.token
+diffhold approvals approve 6663a7ce3960 $TLS --token-file me.token</pre>
+<p>Diffhold checks the approver's token with a TokenReview and requires the <code>diffhold</code> audience (<code>--approver-audience</code>), so a token meant for the API server can't be replayed here. With OIDC, set the audience to your client ID and pass your ID token.</p>
+<div class="tbl"><table>
+  <tr><th>Response</th><th>Meaning</th></tr>
+  <tr><td><code>200</code></td><td>Approval recorded. The body says whether the call is approved or still needs more approvers.</td></tr>
+  <tr><td><code>401</code></td><td>Token missing, invalid or for another audience.</td></tr>
+  <tr><td><code>403</code></td><td>Authenticated, but not a listed approver, the agent itself, or already counted.</td></tr>
+  <tr><td><code>404</code></td><td>No pending call with that ID, or it expired.</td></tr>
+</table></div>
+
+<h2>HTTP API</h2>
+<p>On the admin port (9001, HTTPS): <code>GET /approvals</code> lists pending calls with their diffs and structured changes (admin token). <code>POST /approvals/{callId}</code> approves (approver's own token). <code>GET /leader</code> shows whether this replica is the leader.</p>
+
+<h2>In the audit log</h2>
+<p>The allowed retry's audit record carries <code>approvedBy</code> with each approver's user, groups and time, and the decision reason names them.</p>
+
+<h2>Approving from Slack</h2>
+<p>With Slack enabled, Diffhold posts each new approval request to a channel with the diff and an <b>Approve</b> button. A retry of a call that is still waiting doesn't post again, and approvals already given are kept.</p>
+<ol>
+  <li>Create a Slack app with bot scopes <code>chat:write</code>, <code>users:read</code>, <code>users:read.email</code> and <code>usergroups:read</code>, and invite the bot to the channel.</li>
+  <li>Turn on interactivity and set the request URL to your ingress for the <code>diffhold</code> Service, port 9002, path <code>/slack/interactions</code>.</li>
+  <li>Store the bot token and signing secret, then enable it in the chart:</li>
+</ol>
+<pre>kubectl -n diffhold-system create secret generic diffhold-slack \
+  --from-literal=botToken=xoxb-... --from-literal=signingSecret=...
+helm upgrade diffhold charts/diffhold -n diffhold-system --reuse-values \
+  --set slack.enabled=true --set slack.existingSecret=diffhold-slack --set slack.channel=C0123456789</pre>
+<p>A click is accepted only if Slack's signature is valid and less than 5 minutes old. The person who clicked is identified as <code>user:&lt;their Slack email&gt;</code>, with groups <code>group:slack:&lt;user group handle&gt;</code>. Name them in the policy:</p>
+<pre>approval:
+  approvers: [group:slack:sre-oncall, user:alice@example.com]</pre>
+<div class="note">Slack approvals trust your Slack workspace's identities. Use them only where Slack sign-in goes through your SSO and people can't change their own email. The Slack app has been tested against a simulated Slack API, not a real workspace yet.</div>
+<div class="pager"><a href="policy.html">← AgentPolicy reference</a><a href="cli.html">CLI and flags →</a></div>
+</main>
+</div>
+<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-09</span></div></footer>
+</body>
+</html>
