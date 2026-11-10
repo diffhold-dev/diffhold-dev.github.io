@@ -41,7 +41,7 @@
   <li>An approver lists pending calls, reads the diff and approves with their own token.</li>
   <li>The agent retries the same call. Diffhold runs the dry-run again. If the result matches what was approved, the approval is used up and the call goes through with a per-call token.</li>
 </ol>
-<p>The call ID is a hash of the agent, the tool and its arguments, so a retry with different arguments is a different call that needs its own approval.</p>
+<p>The call ID is a 128-bit hash of the agent, the tool and its arguments, so a retry with different arguments is a different call that needs its own approval. A call with no diff, such as <code>exec</code>, shows approvers its pod and command, and its approval covers exactly that call.</p>
 
 <h2>Rules that are enforced</h2>
 <ul>
@@ -65,12 +65,15 @@ diffhold approvals list $TLS --token-file admin.token
 
 <span class="c"># approve as yourself: a Kubernetes token with audience "diffhold"</span>
 kubectl create token alice -n oncall --audience diffhold &gt; me.token
-diffhold approvals approve 6663a7ce3960 $TLS --token-file me.token</pre>
+diffhold approvals approve CALL_ID --view VIEW $TLS --token-file me.token</pre>
+<p><code>list</code> prints the exact approve command. The view is required: an approval is refused if the pending call was replaced after you read it (<code>409</code>). <code>--any-view</code> approves whatever is pending under the ID instead. For the API, pass <code>?view=</code> with the <code>view</code> from <code>GET /approvals</code>, or <code>?view=any</code>; without it the answer is <code>400</code>.</p>
 <p>Diffhold checks the approver's token with a TokenReview and requires the <code>diffhold</code> audience (<code>--approver-audience</code>), so a token meant for the API server can't be replayed here. With OIDC, set the audience to your client ID and pass your ID token.</p>
 <div class="tbl"><table>
   <tr><th>Response</th><th>Meaning</th></tr>
+  <tr><td><code>400</code></td><td>No view given.</td></tr>
   <tr><td><code>200</code></td><td>Approval recorded. The body says whether the call is approved or still needs more approvers.</td></tr>
   <tr><td><code>401</code></td><td>Token missing, invalid or for another audience.</td></tr>
+  <tr><td><code>409</code></td><td>The pending call changed after the view you approved was shown.</td></tr>
   <tr><td><code>403</code></td><td>Authenticated, but not a listed approver, the agent itself, or already counted.</td></tr>
   <tr><td><code>404</code></td><td>No pending call with that ID, or it expired.</td></tr>
 </table></div>
@@ -82,7 +85,7 @@ diffhold approvals approve 6663a7ce3960 $TLS --token-file me.token</pre>
 <p>The allowed retry's audit record carries <code>approvedBy</code> with each approver's user, groups and time, and the decision reason names them.</p>
 
 <h2>Approving from Slack</h2>
-<p>With Slack enabled, Diffhold posts each new approval request to a channel with the diff and an <b>Approve</b> button. A retry of a call that is still waiting doesn't post again, and approvals already given are kept.</p>
+<p>With Slack enabled, Diffhold posts each new approval request to a channel with the diff and an <b>Approve</b> button. The button approves only the version of the call it was posted for. A view too long for Slack keeps its start and end and has no button: approve it with the CLI. A retry of a call that is still waiting doesn't post again, and approvals already given are kept.</p>
 <ol>
   <li>Create a Slack app with bot scopes <code>chat:write</code>, <code>users:read</code>, <code>users:read.email</code> and <code>usergroups:read</code>, and invite the bot to the channel.</li>
   <li>Turn on interactivity and set the request URL to your ingress for the <code>diffhold</code> Service, port 9002, path <code>/slack/interactions</code>.</li>
@@ -99,6 +102,6 @@ helm upgrade diffhold charts/diffhold -n diffhold-system --reuse-values \
 <div class="pager"><a href="policy.html">← AgentPolicy reference</a><a href="cli.html">CLI and flags →</a></div>
 </main>
 </div>
-<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-09</span></div></footer>
+<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-10</span></div></footer>
 </body>
 </html>

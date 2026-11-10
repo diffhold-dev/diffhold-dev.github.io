@@ -32,24 +32,60 @@
 </nav>
 <main class="doc">
 <h1>Quickstart</h1>
-<p class="lede">Install Diffhold on a local kind cluster, load an example policy and watch it allow, deny and hold agent calls. About 10 minutes.</p>
+<p class="lede">Install Diffhold, add an agent of your own and connect it through agentgateway. The steps work on kind, K3s, RKE2 and hosted clusters (EKS, GKE, AKS); where a step differs by cluster, it says so. Commands are for bash or zsh. Keep one terminal open from start to finish, because later steps use files the earlier ones create.</p>
 
-<div class="note">The source and image are not public yet. They will be at the v0.1 release, and until then these steps need a checkout of the source. They build the image locally, so no pull secret is needed.</div>
+<div class="note">The source and image are not public yet. They will be at the v0.1 release, and until then these steps need a checkout of the source. You build the image yourself and put it where your cluster can pull it.</div>
 
-<h2>1. Create a cluster and build the image</h2>
-<pre>kind create cluster --name diffhold --image kindest/node:v1.35.0
-cd diffhold                    <span class="c"># your checkout of the source</span>
+<h2>1. Build the image and put it on the cluster</h2>
+<pre>cd diffhold                    <span class="c"># your checkout of the source</span>
 make build                     <span class="c"># bin/diffhold, used below</span>
 docker build -t diffhold:dev .
-kind load docker-image diffhold:dev --name diffhold</pre>
+DH=$(mktemp -d)                <span class="c"># private directory for keys and tokens, outside the checkout</span></pre>
+<p>Then get the image onto the cluster's nodes. Pick the row for your cluster:</p>
+<div class="tbl"><table>
+  <tr><th>Cluster</th><th>Do this</th></tr>
+  <tr><td>kind</td><td><pre>kind create cluster --name diffhold --image kindest/node:v1.35.0
+kind load docker-image diffhold:dev --name diffhold</pre></td></tr>
+  <tr><td>K3s, one node</td><td><pre>docker save -o "$DH/diffhold.tar" diffhold:dev
+<span class="c"># on the node (copy the file there first if Docker runs elsewhere):</span>
+sudo k3s ctr images import "$DH/diffhold.tar"</pre></td></tr>
+  <tr><td>RKE2, one node</td><td><pre>docker save -o "$DH/diffhold.tar" diffhold:dev
+<span class="c"># on the node:</span>
+sudo /var/lib/rancher/rke2/bin/ctr --address /run/k3s/containerd/containerd.sock \
+  -n k8s.io images import "$DH/diffhold.tar"</pre></td></tr>
+  <tr><td>Several nodes, or a hosted cluster</td><td><p>Push to a registry the nodes can pull from (ECR, Artifact Registry, ACR, Harbor). Build for the nodes' architecture: Graviton and Ampere nodes are <code>arm64</code>.</p><pre>docker buildx create --use     <span class="c"># once: the default builder can't push several platforms</span>
+docker buildx build --platform linux/amd64,linux/arm64 -t REGISTRY/diffhold:dev --push .</pre></td></tr>
+</table></div>
+<p>An image imported with <code>ctr</code> is not pinned, so the kubelet can remove it when it cleans up disk space. If a pod later fails with <code>ErrImageNeverPull</code>, import it again or use a registry.</p>
 
-<h2>2. Create an agent identity</h2>
-<p>Agents act through a ServiceAccount in an <b>agent namespace</b> (<code>agents</code> by default). Its RBAC is the hard ceiling: Diffhold can only narrow it. The test fixtures create the <code>agents/agent-sre-bot</code> ServiceAccount, a role for it in <code>team-a</code>, a sample Deployment and an approver ServiceAccount <code>oncall/alice</code>.</p>
-<pre>kubectl apply -f test/e2e/fixtures.yaml</pre>
+<h2>2. Check what the cluster must allow</h2>
+<p>Most clusters need nothing here. These are the cases that do:</p>
+<ul>
+  <li><b>The API server must reach the webhook.</b> The admission backstop is a webhook on port <code>9443</code> of Diffhold's pods.
+    <ul>
+      <li><b>GKE private cluster:</b> add a firewall rule that allows the control plane's range to reach the nodes on TCP 9443.</li>
+      <li><b>EKS:</b> with the AWS VPC CNI and the default cluster security group, nothing is needed. With a custom node security group, allow TCP 9443 from the control plane's security group. With an overlay CNI (Calico or Cilium in overlay mode), the control plane can't reach pod IPs, and the chart doesn't support that yet.</li>
+      <li>kind, K3s, RKE2 and AKS need no change.</li>
+    </ul>
+    If the webhook can't be reached, writes by agent ServiceAccounts fail with <code>failed calling webhook "backstop.diffhold.dev"</code>. Nothing else in the cluster is affected.</li>
+  <li><b>Pod Security.</b> Diffhold's chart, the MCP server in step 6 and everything in <code>examples/quickstart.yaml</code> meet the <code>restricted</code> Pod Security Standard, so they also run where it is enforced cluster-wide, as on RKE2 with the CIS profile.</li>
+  <li><b>Certificates.</b> By default the chart makes its own certificates, which are not rotated. On a cluster that matters, install cert-manager and add <code>--set webhook.tls.mode=certManager --set grpc.tls.mode=certManager</code> to the install in step 3.</li>
+  <li><b>Agent namespaces.</b> The backstop only covers ServiceAccounts in the chart's <code>agentNamespaces</code>, <code>agents</code> by default. Put agent ServiceAccounts there.</li>
+</ul>
 
-<h2>3. Install the chart</h2>
-<pre>helm install diffhold charts/diffhold -n diffhold-system --create-namespace \
-  --set image.repository=diffhold --set image.tag=dev --set image.pullPolicy=Never --wait</pre>
+<h2>3. Install Diffhold</h2>
+<p><code>examples/quickstart.yaml</code> creates what the rest of this page uses: namespaces <code>team-a</code>, <code>agents</code> and <code>oncall</code>; the example agent's ServiceAccount <code>agents/agent-sre-bot</code> and a role for it in <code>team-a</code>; a Deployment <code>team-a/web</code> and a ConfigMap <code>team-a/web-config</code> for agents to work on; and an approver ServiceAccount <code>oncall/alice</code>. It is short and commented, so read it first.</p>
+<pre>kubectl apply -f examples/quickstart.yaml</pre>
+<p>Install the chart with the image settings for your cluster:</p>
+<div class="tbl"><table>
+  <tr><th>Cluster</th><th>Install</th></tr>
+  <tr><td>kind</td><td><pre>helm install diffhold charts/diffhold -n diffhold-system --create-namespace --wait \
+  --set image.repository=diffhold --set image.tag=dev --set image.pullPolicy=Never</pre></td></tr>
+  <tr><td>K3s or RKE2, imported image</td><td><pre>helm install diffhold charts/diffhold -n diffhold-system --create-namespace --wait \
+  --set image.repository=docker.io/library/diffhold --set image.tag=dev --set image.pullPolicy=Never</pre></td></tr>
+  <tr><td>Registry</td><td><pre>helm install diffhold charts/diffhold -n diffhold-system --create-namespace --wait \
+  --set image.repository=REGISTRY/diffhold --set image.tag=dev</pre><p>If the nodes can't already pull from that registry, create a pull Secret in <code>diffhold-system</code> first, and add <code>--set 'imagePullSecrets[0].name=SECRET'</code> (quoted, for zsh).</p></td></tr>
+</table></div>
 <p>The chart generates the webhook CA, the gRPC server and gateway client certificates, the admin token, the grant signing key and the audit signing key, and keeps all of them across upgrades.</p>
 
 <h2>4. Load a policy</h2>
@@ -57,35 +93,134 @@ kind load docker-image diffhold:dev --name diffhold</pre>
 kubectl -n diffhold-system get agentpolicies</pre>
 <pre><span class="c">NAME      AGENTS    MODE      READY   AGE</span>
 sre-bot   sre-bot   enforce   True    4s</pre>
-<p>Check the policy offline at any time, and run its test suite:</p>
+<p>Check the policy offline at any time, run its test suite, and check that the agent's ServiceAccount can't switch Diffhold off:</p>
 <pre>bin/diffhold policy check examples/agentpolicy.yaml
-bin/diffhold test examples/agentpolicy_test.yaml      <span class="c"># 10/10 passed</span></pre>
+bin/diffhold test examples/agentpolicy_test.yaml          <span class="c"># 10/10 passed</span>
+bin/diffhold permissions check agents/agent-sre-bot       <span class="c"># OK    agents/agent-sre-bot</span></pre>
 
-<h2>5. Connect a gateway</h2>
-<p>Point agentgateway's guardrail processor at <code>diffhold.diffhold-system.svc:9000</code> with the client certificate from Secret <code>diffhold-gateway-client</code>. See <a href="gateway.html">Connect agentgateway</a>.</p>
-<p>To try the full path without a gateway, run the end-to-end suite. It calls Diffhold over mTLS the way agentgateway does, uses the returned tokens against the API server and checks every result:</p>
-<pre>DIFFHOLD_E2E_CONTEXT=kind-diffhold hack/e2e-helm.sh</pre>
+<h2>5. Add your own agent</h2>
+<p>An agent needs three things: a ServiceAccount in an agent namespace, RBAC for that ServiceAccount, and an <code>AgentPolicy</code> that binds the agent's name to it. The admission backstop refuses any write from that ServiceAccount that Diffhold did not grant, so the agent can't get around the policy with the ServiceAccount's own token.</p>
+<pre>kubectl apply -f - &lt;&lt;'EOF'
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: agent-deploy-bot, namespace: agents}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: deploy-bot, namespace: team-a}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: agent-workload-editor}
+subjects: [{kind: ServiceAccount, name: agent-deploy-bot, namespace: agents}]
+---
+apiVersion: diffhold.dev/v1alpha1
+kind: AgentPolicy
+metadata: {name: deploy-bot, namespace: diffhold-system}
+spec:
+  subjects: [{agent: deploy-bot}]                       <span class="c"># the name the gateway sends</span>
+  credentials: {serviceAccount: agents/agent-deploy-bot}
+  rules:
+  - name: read-team-a
+    verbs: [get, list, watch, logs]
+    resources: [{kinds: ["*"], namespaces: [team-a]}]
+    exclude: [{kinds: [Secret]}]
+  - name: scale-team-a
+    verbs: [scale]
+    resources: [{kinds: [Deployment], namespaces: [team-a]}]
+    conditions: ["object.spec.replicas &lt;= 5"]
+  - name: deletes-need-a-human
+    verbs: [delete]
+    resources: [{kinds: [ConfigMap, Pod], namespaces: [team-a]}]
+    approval: {approvers: [group:system:serviceaccounts:oncall]}
+EOF
+kubectl -n diffhold-system get agentpolicy deploy-bot      <span class="c"># READY True</span>
+bin/diffhold permissions check agents/agent-deploy-bot</pre>
+<p>The ClusterRole <code>agent-workload-editor</code> comes from <code>examples/quickstart.yaml</code>. For a real agent, write a role with only what its job needs.</p>
 
-<h2>6. Approve a held call</h2>
-<pre>kubectl -n diffhold-system port-forward svc/diffhold 9001 &amp;
-kubectl -n diffhold-system get secret diffhold-gateway-client -o jsonpath='{.data.ca\.crt}' | base64 -d &gt; ca.crt
-kubectl -n diffhold-system get secret diffhold-admin -o jsonpath='{.data.token}' | base64 -d &gt; admin.token
-export DIFFHOLD_ADMIN=https://localhost:9001 DIFFHOLD_CA_FILE=ca.crt
-TLS="--tls-server-name diffhold.diffhold-system.svc"
-bin/diffhold approvals list $TLS --token-file admin.token
+<h2>6. Run the MCP server and the gateway</h2>
+<p>kubernetes-mcp-server runs with no credentials of its own: no ServiceAccount token, and a kubeconfig with only the API server address and CA. It can do nothing without the per-call token Diffhold gives it.</p>
+<pre>kubectl apply -f test/e2e/stack/mcp-server.yaml
+kubectl -n mcp rollout status deploy/kubernetes-mcp-server</pre>
+<p>agentgateway checks a JWT on every request and sends its subject to Diffhold as the agent's name. In production the JWT comes from your identity provider. To try it, make a test signing key and a token whose subject is <code>deploy-bot</code>:</p>
+<pre>go run ./test/e2e/stack keygen "$DH"                                  <span class="c"># jwt.key and jwks.json</span>
+go run ./test/e2e/stack sign "$DH" deploy-bot &gt; "$DH/agent.jwt"     <span class="c"># valid for 1 hour</span></pre>
+<p>Download agentgateway 1.7.0 for your workstation from its <a href="https://github.com/agentgateway/agentgateway/releases/tag/v1.7.0">release page</a>: the asset for your OS and architecture. Save it as <code>$DH/agentgateway</code> and make it executable with <code>chmod +x "$DH/agentgateway"</code>. The gateway runs on your machine and reaches the cluster through port-forwards, so this works the same on every cluster. Give it the client certificate Diffhold expects, and the config:</p>
+<pre>kubectl -n diffhold-system port-forward svc/diffhold 29000:9000 9001:9001 &amp;
+kubectl -n mcp port-forward svc/kubernetes-mcp-server 23001:8080 &amp;
+for k in ca.crt tls.crt tls.key; do
+  kubectl -n diffhold-system get secret diffhold-gateway-client \
+    -o jsonpath="{.data.${k//./\\.}}" | base64 -d &gt; "$DH/gw-$k"
+done
 
-kubectl create token alice -n oncall --audience diffhold &gt; alice.token
-bin/diffhold approvals approve CALL_ID $TLS --token-file alice.token</pre>
-<p>Check that no agent ServiceAccount can switch Diffhold off:</p>
-<pre>bin/diffhold permissions check agents/agent-sre-bot --context kind-diffhold      <span class="c"># OK    agents/agent-sre-bot</span></pre>
-<p>The agent retries the same call and it goes through once. See <a href="approvals.html">Approvals</a>.</p>
+cat &gt; "$DH/gateway.yaml" &lt;&lt;EOF
+mcp:
+  port: 23000
+  policies:
+    jwtAuth:
+      mode: strict                      <span class="c"># reject requests without a valid JWT</span>
+      issuer: diffhold-e2e
+      audiences: [diffhold-e2e]
+      jwks: {file: $DH/jwks.json}
+    mcpGuardrails:
+      processors:
+      - kind: remote
+        host: 127.0.0.1:29000           <span class="c"># Diffhold, through the port-forward</span>
+        methods: {"tools/call": request}
+        failureMode: failClosed
+        metadata: {agent: jwt.sub}       <span class="c"># the agent's name, from the JWT</span>
+        policies:
+          backendTLS: {cert: $DH/gw-tls.crt, key: $DH/gw-tls.key, root: $DH/gw-ca.crt, hostname: diffhold.diffhold-system.svc}
+  targets:
+  - name: k8s
+    mcp: {host: http://127.0.0.1:23001/mcp}
+EOF
+"$DH/agentgateway" -f "$DH/gateway.yaml" &amp;</pre>
+<p>For a shared setup, run the gateway in the cluster instead, mount Secret <code>diffhold-gateway-client</code>, and use <code>diffhold.diffhold-system.svc:9000</code> as the host. See <a href="gateway.html">Connect agentgateway</a>.</p>
+
+<h2>7. Connect the agent and try it</h2>
+<p>Any MCP client that can send a bearer token works. With Claude Code:</p>
+<pre>claude mcp add --transport http k8s http://127.0.0.1:23000/mcp \
+  --header "Authorization: Bearer $(cat "$DH/agent.jwt")"</pre>
+<p>The token lasts an hour. After that every call gets <code>401</code> from the gateway: sign a new one as in step 6, then run <code>claude mcp remove k8s</code> and add it again.</p>
+<p>Ask it to do things in <code>team-a</code>:</p>
+<div class="tbl"><table>
+  <tr><th>Ask the agent to</th><th>What happens</th></tr>
+  <tr><td>List the pods in team-a</td><td>Allowed.</td></tr>
+  <tr><td>Scale web in team-a to 3</td><td>Allowed after a dry-run, with a token for exactly that change.</td></tr>
+  <tr><td>Scale web in team-a to 20</td><td>Denied: <code>object.spec.replicas &lt;= 5</code> is false. The agent sees the reason.</td></tr>
+  <tr><td>Read the Secrets in team-a</td><td>Denied: Secrets are excluded.</td></tr>
+  <tr><td>Delete the ConfigMap web-config in team-a</td><td>Held for approval. The agent sees the diff and the call ID.</td></tr>
+  <tr><td>Scale coredns in kube-system to 0</td><td>Denied: no rule matches.</td></tr>
+</table></div>
+
+<h2>8. Approve a held call</h2>
+<pre>kubectl -n diffhold-system get secret diffhold-gateway-client -o jsonpath='{.data.ca\.crt}' | base64 -d &gt; "$DH/ca.crt"
+kubectl -n diffhold-system get secret diffhold-admin -o jsonpath='{.data.token}' | base64 -d &gt; "$DH/admin.token"
+export DIFFHOLD_ADMIN=https://localhost:9001 DIFFHOLD_CA_FILE="$DH/ca.crt"
+bin/diffhold approvals list --tls-server-name diffhold.diffhold-system.svc --token-file "$DH/admin.token"</pre>
+<p><code>list</code> shows each held call with its diff and the exact command to approve it, with a <code>--view</code> that ties your approval to what you just read. Approve as <code>alice</code>, with her own token:</p>
+<pre>kubectl create token alice -n oncall --audience diffhold &gt; "$DH/alice.token"
+bin/diffhold approvals approve CALL_ID --view VIEW \
+  --tls-server-name diffhold.diffhold-system.svc --token-file "$DH/alice.token"</pre>
+<p>Ask the agent to retry, and the delete goes through once. See <a href="approvals.html">Approvals</a>. Every decision is in Diffhold's audit log:</p>
+<pre>kubectl -n diffhold-system logs -l app.kubernetes.io/name=diffhold --tail=-1 | grep '"decision"'</pre>
+<p>On kind, <code>make e2e-stack</code> drives this same path with a scripted client and checks every result.</p>
 
 <h2>Uninstall</h2>
-<pre>helm uninstall diffhold -n diffhold-system</pre>
-<p>A pre-delete hook revokes every outstanding per-call token before the webhook goes away. Helm leaves the CRD in place.</p>
+<p>Remove agent RBAC first. Without Diffhold's backstop, a token an agent's ServiceAccount gets some other way could use all of it, so <code>helm uninstall</code> refuses while any binding lets an agent ServiceAccount write. <code>bin/diffhold uninstall --check-only --agent-namespaces agents</code> lists those bindings (pass the chart's <code>agentNamespaces</code>, and <code>--context</code> if needed).</p>
+<pre>kubectl -n team-a delete rolebinding deploy-bot sre-bot-workload
+kubectl -n diffhold-system delete agentpolicies --all
+helm uninstall diffhold -n diffhold-system
+kubectl delete namespace diffhold-system
+kubectl delete -f test/e2e/stack/mcp-server.yaml
+kubectl delete -f examples/quickstart.yaml --ignore-not-found
+claude mcp remove k8s
+kill %1 %2 %3                   <span class="c"># the port-forwards and the gateway</span>
+rm -rf "$DH"</pre>
+<p>A pre-delete hook stops Diffhold, revokes every outstanding per-call and read token, and removes approvals and Diffhold's other runtime state before the webhook goes away. If it refuses, <code>kubectl -n diffhold-system logs job/diffhold-revoke-grants</code> says why: delete the bindings it names and run <code>helm uninstall</code> again. Helm leaves a refused release as <code>uninstalling</code>; to keep Diffhold instead, roll back to the current revision, <code>helm rollback diffhold REVISION -n diffhold-system</code> with the last revision from <code>helm history diffhold -n diffhold-system</code>, and it can be upgraded again (see <code>docs/upgrading.md</code> in the repository). Helm leaves the <code>AgentPolicy</code> CRD in place; delete it with <code>kubectl delete crd agentpolicies.diffhold.dev</code> if nothing else uses it.</p>
+
+<div class="note"><b>Where this has been tested.</b> On 2026-11-10 the commands on this page were run in order on K3s v1.33.5 in Docker, with the <code>restricted</code> Pod Security Standard enforced on every namespace except <code>kube-system</code>, as on RKE2 with the CIS profile. Three things differed from the page: the image was imported with <code>docker exec</code> into the K3s container, agentgateway was already downloaded, and a scripted MCP client made the calls in step 7 instead of Claude Code. The script also waited for port-forwards and logged output, and counted the audit log instead of printing it. Every row of that table behaved as described, and after the uninstall only the CRD was left. On kind, <code>make e2e-stack</code> runs this path in CI on every push. Not tested yet: RKE2 itself, EKS, GKE and AKS (so the RKE2 import command and the notes in step 2 come from documentation, not a run), the registry and <code>buildx</code> path, <code>imagePullSecrets</code>, and a real LLM agent. Report anything that doesn't work.</div>
 <div class="pager"><a href="docs.html">← Overview</a><a href="gateway.html">Connect agentgateway →</a></div>
 </main>
 </div>
-<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-09</span></div></footer>
+<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-10</span></div></footer>
 </body>
 </html>

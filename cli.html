@@ -41,8 +41,9 @@
   <tr><td><code>diffhold policy check FILE...</code></td><td>Validates <code>AgentPolicy</code> files with the same rules the server uses.</td></tr>
   <tr><td><code>diffhold test FILE...</code></td><td>Runs policy test suites: for each tool call, the expected <code>allow</code>, <code>deny</code> or <code>approval</code>, and optionally a reason substring.</td></tr>
   <tr><td><code>diffhold approvals list</code></td><td>Lists pending calls with their diffs (admin token).</td></tr>
-  <tr><td><code>diffhold approvals approve CALL_ID</code></td><td>Approves a pending call with your own token.</td></tr>
-  <tr><td><code>diffhold grants revoke-all</code></td><td>Deletes every grant Secret, which revokes every outstanding per-call token. The chart runs it on uninstall.</td></tr>
+  <tr><td><code>diffhold approvals approve CALL_ID --view VIEW</code></td><td>Approves a pending call with your own token. <code>list</code> prints the view; the approval is refused if the call changed since you read it. <code>--any-view</code> approves whatever is pending instead.</td></tr>
+  <tr><td><code>diffhold grants revoke-all</code></td><td>Deletes every grant and read token Secret, which revokes every outstanding token.</td></tr>
+  <tr><td><code>diffhold uninstall --check-only | --yes</code></td><td>With <code>--yes</code>, the chart's pre-delete hook. Refuses while any binding lets an agent ServiceAccount write; otherwise stops Diffhold, revokes every token and removes approvals, used-grant markers and the leader Lease. <code>--check-only</code> just lists the blocking bindings.</td></tr>
   <tr><td><code>diffhold audit verify FILE [--public-key KEY]...</code></td><td>Checks a hash-chained audit log and reports the first broken record. With the public key from <code>GET /audit/public-key</code>, also checks every signed checkpoint and reports records after the last one. Repeat <code>--public-key</code> for a log that spans a key change.</td></tr>
   <tr><td><code>diffhold permissions check SA...</code></td><td>Reports what an agent ServiceAccount can do that could switch off Diffhold. Exits 1 on a high-severity finding, so it can gate CI.</td></tr>
   <tr><td><code>diffhold version</code></td><td>Prints the version.</td></tr>
@@ -114,13 +115,14 @@
   <tr><td><code>permissionCheck</code></td><td><code>warn</code></td><td>Same as <code>--permission-check</code>.</td></tr>
   <tr><td><code>approvals.maxPendingPerAgent</code></td><td><code>20</code></td><td>Same as <code>--max-pending-per-agent</code>.</td></tr>
   <tr><td><code>networkPolicy.enabled</code></td><td><code>false</code></td><td>Limit the gRPC port to the gateway's pods (<code>networkPolicy.grpcFrom</code>).</td></tr>
-  <tr><td><code>revokeOnUninstall</code></td><td><code>true</code></td><td>Revoke every grant before the webhook is removed.</td></tr>
+  <tr><td><code>revokeOnUninstall</code></td><td><code>true</code></td><td>Run the pre-delete hook: refuse while agents can write, then stop Diffhold, revoke every token and clean up.</td></tr>
+  <tr><td><code>uninstall.allowAgentRBAC</code></td><td><code>false</code></td><td>Uninstall even if agent ServiceAccounts can still write.</td></tr>
   <tr><td><code>approvals.pendingTTL</code>, <code>approvals.approvedTTL</code></td><td><code>1h</code>, <code>15m</code></td><td>Approval lifetimes.</td></tr>
   <tr><td><code>otel.endpoint</code></td><td></td><td>OTLP endpoint for traces.</td></tr>
 </table></div>
 <div class="pager"><a href="approvals.html">← Approvals</a><a href="security.html">Security model →</a></div>
 </main>
 </div>
-<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-09</span></div></footer>
+<footer class="foot"><div class="wrap"><span>Diffhold · Apache-2.0</span><span>Docs for the pre-alpha build, updated 2026-11-10</span></div></footer>
 </body>
 </html>
