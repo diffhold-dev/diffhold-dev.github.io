@@ -8,12 +8,28 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="site.css">
+<meta name="description" content="Diffhold is change control for AI agents on Kubernetes.">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#131b2b">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Diffhold">
+<meta property="og:title" content="Overview · Diffhold docs">
+<meta property="og:description" content="Diffhold is change control for AI agents on Kubernetes.">
+<meta property="og:url" content="https://diffhold.dev/docs.html">
+<meta property="og:image" content="https://diffhold.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Diffhold: change control for AI agents on Kubernetes">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://diffhold.dev/og.png">
 </head>
 <body>
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="./" aria-label="Diffhold home">
-      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      <svg width="26" height="26" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#131b2b"/><path d="M13 21h19M13 32h24M13 43h14" stroke="#e4e9f2" stroke-width="6" stroke-linecap="round"/><rect x="43" y="14" width="8" height="36" rx="4" fill="#f0a443"/></svg>
       Diffhold
     </a>
     <nav class="topnav" aria-label="Main">
@@ -64,7 +80,7 @@
 
 <h2>Requirements</h2>
 <ul>
-  <li>Kubernetes 1.30 or later (token credential IDs and webhook <code>matchConditions</code>).</li>
+  <li>Kubernetes 1.31 or later. CI tests 1.35 on every change and 1.31 to 1.37 weekly; 1.30 has the needed features (token credential IDs, webhook <code>matchConditions</code>) but is not tested.</li>
   <li>agentgateway 1.7 or later, with JWT authentication for agents.</li>
   <li>An MCP server that takes a per-request Kubernetes token in a header. kubernetes-mcp-server is the tested one.</li>
 </ul>

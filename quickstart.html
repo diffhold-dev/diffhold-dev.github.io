@@ -8,12 +8,28 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="site.css">
+<meta name="description" content="Install Diffhold, add an agent of your own and connect it through agentgateway.">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#131b2b">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Diffhold">
+<meta property="og:title" content="Quickstart · Diffhold docs">
+<meta property="og:description" content="Install Diffhold, add an agent of your own and connect it through agentgateway.">
+<meta property="og:url" content="https://diffhold.dev/quickstart.html">
+<meta property="og:image" content="https://diffhold.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Diffhold: change control for AI agents on Kubernetes">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://diffhold.dev/og.png">
 </head>
 <body>
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="./" aria-label="Diffhold home">
-      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      <svg width="26" height="26" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#131b2b"/><path d="M13 21h19M13 32h24M13 43h14" stroke="#e4e9f2" stroke-width="6" stroke-linecap="round"/><rect x="43" y="14" width="8" height="36" rx="4" fill="#f0a443"/></svg>
       Diffhold
     </a>
     <nav class="topnav" aria-label="Main">
@@ -69,7 +85,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t REGISTRY/diffhold:dev 
     </ul>
     If the webhook can't be reached, writes by agent ServiceAccounts fail with <code>failed calling webhook "backstop.diffhold.dev"</code>. Nothing else in the cluster is affected.</li>
   <li><b>Pod Security.</b> Diffhold's chart, the MCP server in step 6 and everything in <code>examples/quickstart.yaml</code> meet the <code>restricted</code> Pod Security Standard, so they also run where it is enforced cluster-wide, as on RKE2 with the CIS profile.</li>
-  <li><b>Certificates.</b> By default the chart makes its own certificates, which are not rotated. On a cluster that matters, install cert-manager and add <code>--set webhook.tls.mode=certManager --set grpc.tls.mode=certManager</code> to the install in step 3.</li>
+  <li><b>Certificates (recommended: cert-manager).</b> By default the chart makes its own 10-year certificates and never rotates them, which is fine for trying Diffhold out. On any cluster you keep, install cert-manager first, wait for it with <code>kubectl -n cert-manager wait --for=condition=Available deploy --all --timeout=3m</code> (an install started earlier fails on cert-manager's webhook), and add <code>--set webhook.tls.mode=certManager --set grpc.tls.mode=certManager</code> to the install in step 3: cert-manager then issues and renews every certificate, and Diffhold reloads them without a restart. Choose this before the first install; switching an existing install has not been tested. Copies of the gateway client certificate made outside the cluster, as in step 5, are not renewed: copy them again before they expire (90 days by default, <code>certManager.duration</code>). Whether agentgateway reloads a renewed certificate mounted from the Secret has not been tested.</li>
   <li><b>Agent namespaces.</b> The backstop only covers ServiceAccounts in the chart's <code>agentNamespaces</code>, <code>agents</code> by default. Put agent ServiceAccounts there.</li>
 </ul>
 

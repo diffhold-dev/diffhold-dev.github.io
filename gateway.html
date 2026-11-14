@@ -8,12 +8,28 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="site.css">
+<meta name="description" content="Diffhold runs as an ExtMcp remote guardrail processor.">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#131b2b">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Diffhold">
+<meta property="og:title" content="Connect agentgateway · Diffhold docs">
+<meta property="og:description" content="Diffhold runs as an ExtMcp remote guardrail processor.">
+<meta property="og:url" content="https://diffhold.dev/gateway.html">
+<meta property="og:image" content="https://diffhold.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Diffhold: change control for AI agents on Kubernetes">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://diffhold.dev/og.png">
 </head>
 <body>
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="./" aria-label="Diffhold home">
-      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      <svg width="26" height="26" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#131b2b"/><path d="M13 21h19M13 32h24M13 43h14" stroke="#e4e9f2" stroke-width="6" stroke-linecap="round"/><rect x="43" y="14" width="8" height="36" rx="4" fill="#f0a443"/></svg>
       Diffhold
     </a>
     <nav class="topnav" aria-label="Main">
@@ -60,7 +76,7 @@
 </ul>
 
 <h2>The MCP server</h2>
-<p>On an allowed call, Diffhold sets <code>Authorization: Bearer &lt;per-call token&gt;</code> on the request to the MCP server, replacing the agent's JWT. kubernetes-mcp-server uses that header as its Kubernetes credential. Give it no credentials of its own: no ServiceAccount token, and a kubeconfig with only the API server address and CA.</p>
+<p>On an allowed call, Diffhold sets <code>Authorization: Bearer &lt;per-call token&gt;</code> on the request to the MCP server, replacing the agent's JWT. kubernetes-mcp-server uses that header as its Kubernetes credential. Give it no credentials of its own: no ServiceAccount token, and a kubeconfig with only the API server address and CA, for the one cluster Diffhold runs in. Its current context must be Diffhold's cluster: every call without a <code>context</code> goes there. Diffhold refuses any call that names a <code>context</code>, <code>workspace</code> or <code>cluster</code>, because it checks and approves changes only against its own cluster.</p>
 <pre><span class="c"># kubernetes-mcp-server config.toml</span>
 port = "8080"
 kubeconfig = "/etc/mcp/kubeconfig"     <span class="c"># server + CA only, no user</span>
@@ -68,7 +84,7 @@ kubeconfig = "/etc/mcp/kubeconfig"     <span class="c"># server + CA only, no us
 <span class="c"># Deployment</span>
 automountServiceAccountToken: false</pre>
 <p>Diffhold's dry-run applies under the field manager the MCP server uses, <code>kubernetes-mcp-server</code> by default, so an apply that removes fields is predicted exactly. For another MCP server, set <code>mcpServer.tokenHeader</code> and <code>mcpServer.applyFieldManager</code> in the chart.</p>
-<div class="note">Tested end to end with agentgateway 1.7.0 and kubernetes-mcp-server 0.1.1 on kind, in CI on every push: reads, scale, server-side apply including field removal, denials, a held delete approved and executed once, and held exec.</div>
+<div class="note">Tested end to end with agentgateway 1.7.0 and kubernetes-mcp-server 0.1.2 (earlier 0.1.1) on kind, in CI on every push: reads, scale, server-side apply including field removal, denials, a held delete approved and executed once, and held exec.</div>
 
 <h2>What gets checked</h2>
 <p>Diffhold handles <code>tools/call</code> requests and passes other MCP methods through. Tool names are matched without the gateway's target prefix, so <code>k8s:resources_scale</code> is treated as <code>resources_scale</code>. The kubernetes-mcp-server tool set is mapped: <code>resources_*</code> (get, list, create or update with single or multi-document YAML, scale, delete), <code>pods_*</code> (including exec, logs and run), events, namespaces and <code>nodes_top</code>. <code>nodes_log</code> and <code>nodes_stats_summary</code> are denied because they read through <code>nodes/proxy</code>, which the backstop refuses for agent tokens. <code>helm_install</code>, <code>helm_uninstall</code> and <code>helm_list</code> are denied in v0.1: one install can create dozens of objects, and Diffhold can't yet show and approve all of them, and <code>helm_list</code> reads Helm's release Secrets, and can do so across namespaces, which the adapter can't yet map safely. Chart support is planned for v0.2. Until then, let agents change charts through GitOps: a Flux <code>HelmRelease</code> or Argo CD <code>Application</code> is an ordinary object, so policy can limit its chart version and values like any other apply. Any tool Diffhold doesn't know is denied.</p>

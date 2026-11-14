@@ -8,12 +8,28 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="site.css">
+<meta name="description" content="One binary, diffhold, runs the server and the operator commands.">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#131b2b">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Diffhold">
+<meta property="og:title" content="CLI and flags · Diffhold docs">
+<meta property="og:description" content="One binary, diffhold, runs the server and the operator commands.">
+<meta property="og:url" content="https://diffhold.dev/cli.html">
+<meta property="og:image" content="https://diffhold.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Diffhold: change control for AI agents on Kubernetes">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://diffhold.dev/og.png">
 </head>
 <body>
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="./" aria-label="Diffhold home">
-      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      <svg width="26" height="26" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#131b2b"/><path d="M13 21h19M13 32h24M13 43h14" stroke="#e4e9f2" stroke-width="6" stroke-linecap="round"/><rect x="43" y="14" width="8" height="36" rx="4" fill="#f0a443"/></svg>
       Diffhold
     </a>
     <nav class="topnav" aria-label="Main">
@@ -107,9 +123,9 @@
   <tr><td><code>agentNamespaces</code></td><td><code>[agents]</code></td><td>Same as <code>--grant-namespaces</code>.</td></tr>
   <tr><td><code>policyNamespace</code></td><td><code>""</code></td><td>Empty means the release namespace.</td></tr>
   <tr><td><code>replicaCount</code></td><td><code>2</code></td><td>With anti-affinity and a PodDisruptionBudget.</td></tr>
-  <tr><td><code>grpc.tls.mode</code></td><td><code>auto</code></td><td><code>auto</code> generates the CA, server and gateway client certificates; <code>certManager</code> has cert-manager issue and renew them; <code>existingSecret</code>; or <code>insecure</code>. The admin listener uses the same server certificate, and is plain HTTP only in <code>insecure</code> mode.</td></tr>
+  <tr><td><code>grpc.tls.mode</code></td><td><code>auto</code></td><td><code>auto</code> generates the CA, server and gateway client certificates; <code>certManager</code> (recommended) has cert-manager issue and renew them; <code>existingSecret</code>; or <code>insecure</code>. The admin listener uses the same server certificate, and is plain HTTP only in <code>insecure</code> mode.</td></tr>
   <tr><td><code>grpc.tls.clientNames</code></td><td><code>[agentgateway]</code></td><td>Allowed gateway certificate names.</td></tr>
-  <tr><td><code>webhook.tls.mode</code></td><td><code>auto</code></td><td>Self-signed CA kept across upgrades (10-year certificate, not rotated), <code>certManager</code> (renewed, <code>caBundle</code> injected), or <code>existingSecret</code> with a <code>caBundle</code>. Diffhold reloads renewed certificates within 10 s, without a restart.</td></tr>
+  <tr><td><code>webhook.tls.mode</code></td><td><code>auto</code></td><td>Self-signed CA kept across upgrades (10-year certificate, not rotated), <code>certManager</code> (recommended: renewed, <code>caBundle</code> injected), or <code>existingSecret</code> with a <code>caBundle</code>. Diffhold reloads renewed certificates within 10 s, without a restart.</td></tr>
   <tr><td><code>certManager.issuerRef</code></td><td><code>{}</code></td><td>Issuer for <code>certManager</code> mode, for example <code>{name: corp-ca, kind: ClusterIssuer}</code>. Empty: the chart creates a self-signed CA.</td></tr>
   <tr><td><code>certManager.duration</code> / <code>renewBefore</code></td><td><code>2160h</code> / <code>720h</code></td><td>Certificate lifetime and how early it is renewed.</td></tr>
   <tr><td><code>permissionCheck</code></td><td><code>warn</code></td><td>Same as <code>--permission-check</code>.</td></tr>

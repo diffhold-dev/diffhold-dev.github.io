@@ -1,4 +1,23 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Diffhold</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#131b2b">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Diffhold">
+<meta property="og:title" content="Diffhold">
+<meta property="og:description" content="Change control for AI agents on Kubernetes: policy, dry-run diff, approval and a single-use credential for every change an agent makes.">
+<meta property="og:url" content="https://diffhold.dev/">
+<meta property="og:image" content="https://diffhold.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Diffhold: change control for AI agents on Kubernetes">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://diffhold.dev/og.png">
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="Change control for AI agents on Kubernetes: policy, dry-run diff, approval and a single-use credential for every change an agent makes.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -103,7 +122,7 @@ section.band { padding-block: 72px; border-top: 1px solid var(--rule); }
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="./" aria-label="Diffhold home">
-      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9h8M7 13h12M7 17h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="19" cy="17" r="2.4" fill="#d98a1f"/></svg>
+      <svg width="26" height="26" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#131b2b"/><path d="M13 21h19M13 32h24M13 43h14" stroke="#e4e9f2" stroke-width="6" stroke-linecap="round"/><rect x="43" y="14" width="8" height="36" rx="4" fill="#f0a443"/></svg>
       Diffhold
     </a>
     <nav class="topnav" aria-label="Main">
@@ -279,7 +298,7 @@ section.band { padding-block: 72px; border-top: 1px solid var(--rule); }
   <div class="wrap">
     <span class="eyebrow">Security</span>
     <h2>Threat-modelled before anyone runs it</h2>
-    <p class="intro">The threat model lists 25 threats with status and evidence. The seven that blocked any outside use are fixed, and each fix started with a test that reproduced the attack.</p>
+    <p class="intro">The threat model lists 28 threats with status and evidence. The seven that blocked any outside use are fixed, and each fix started with a test that reproduced the attack.</p>
     <dl class="facts">
       <div><dt>IDENTITY</dt><dd>The agent identity comes only from the gateway&rsquo;s authenticated metadata, such as the JWT subject. Headers are ignored.</dd></div>
       <div><dt>TRANSPORT</dt><dd>The gateway connection requires mutual TLS. The Helm chart generates both certificates.</dd></div>
